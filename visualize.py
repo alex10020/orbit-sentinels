@@ -195,13 +195,13 @@ def build_figure(
     if shown < total_rows:
         subtitle = (
             f"Closest {shown:,} of {total_rows:,} flagged encounters "
-            f"&middot; {source.name}"
+            f"· {source.name}"
         )
     else:
-        subtitle = f"{shown:,} flagged encounters &middot; {source.name}"
+        subtitle = f"{shown:,} flagged encounters · {source.name}"
 
     closest = frame["miss_distance_km"].min()
-    subtitle += f" &middot; tightest approach {closest:.3f} km"
+    subtitle += f" · tightest approach {closest:.3f} km"
 
     # `aspectmode="data"` keeps Earth spherical; without it Plotly stretches the
     # axes to the box and the globe becomes an ellipsoid.

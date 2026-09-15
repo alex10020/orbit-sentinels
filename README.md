@@ -86,7 +86,9 @@ cp .env.example .env           # then fill in your Space-Track credentials
 
 python main.py                 # 10-minute smoke test, first 1,000 objects
 python main.py --full          # full 72-hour forecast over the LEO catalog
-python visualize.py --open     # render index.html and open it
+python visualize.py --open     # static 3D encounter map  -> index.html
+python simulate.py --open      # animated orbital playback -> simulation.html
+python report.py --open        # results & CDM evidence    -> results.html
 python test_sentinel.py        # 28 correctness tests, no pytest required
 ```
 
@@ -118,7 +120,9 @@ orbital-sentinel/
 ├── validator.py       Benchmarking against official 18th SDS CDMs
 ├── logger.py          Profiling, alert tables, pandas/JSON/CSV output
 ├── main.py            Pipeline orchestrator and CLI
-├── visualize.py       Plotly 3D globe -> index.html
+├── visualize.py       Plotly 3D globe of encounters -> index.html
+├── simulate.py        Animated orbital playback -> simulation.html
+├── report.py          Evidence + validation dashboard -> results.html
 └── test_sentinel.py   Correctness tests
 ```
 
@@ -193,6 +197,64 @@ Python-level loop and no extra SGP4 calls.
 
 The surviving TCA estimates are already sub-step accurate. `refine_tca()` then
 polishes the closest encounters against true SGP4 geometry (below).
+
+---
+
+## Seeing the results
+
+Three HTML pages, each answering a different question. All are generated
+locally and open straight in a browser.
+
+| Command | Output | What it shows |
+|---|---|---|
+| `python report.py --open` | `results.html` | **Start here.** The numbers and the proof behind them |
+| `python visualize.py --open` | `index.html` | *Where* conjunctions happen &mdash; static 3D map |
+| `python simulate.py --open` | `simulation.html` | *How* they happen &mdash; animated orbits, play/pause |
+
+### `results.html` &mdash; the evidence report
+
+Written to answer "how do I know it actually ran SGP4, NumPy and CDM
+validation?" It has four sections:
+
+1. **Engine evidence.** Runs a live vectorized propagation when the page is
+   generated and prints the real `SatrecArray.sgp4()` output: array shapes,
+   `float64` dtypes, a sample TEME state vector with its altitude and speed
+   sanity-checked against circular LEO, and the measured throughput. It is a
+   transcript, not a description.
+2. **CDM validation.** Every matched encounter side by side &mdash; official
+   18th SDS TCA and miss distance against ours, with residuals in seconds and
+   km, plus each CDM's collision probability.
+3. **Pipeline performance.** Per-stage profile from the most recent run.
+4. **Highest-risk conjunctions.** The ranked alert table.
+
+### `simulation.html` &mdash; animated playback
+
+Objects move along their orbits frame by frame with Play/Pause and a scrub
+slider; conjunctions ignite in red as they occur, hoverable for the object
+names. Every frame is precomputed by the same vectorized SGP4 engine, so the
+browser only replays positions and does no orbital mechanics itself.
+
+It defaults to a wider 25 km screening radius than the operational 5 km, so
+that events actually appear within a single orbit; `--threshold 5` gives the
+real thing, with far fewer flashes.
+
+```bash
+python simulate.py --objects 2000 --minutes 95 --frames 200 --open
+python simulate.py --threshold 5 --open        # operational threshold
+```
+
+Keep the object and frame counts moderate: the page holds
+`objects x frames x 3` floats, and a browser will struggle long before the
+physics does.
+
+### Where the raw numbers live
+
+Nothing is hidden in the HTML. Everything comes from files you can open:
+
+- `conjunction_alerts.csv` &mdash; every alert, with TEME `x_km/y_km/z_km`
+- `logs/run_summary_<run>.json` &mdash; throughput, stage profile, metrics
+- `logs/validation_<run>.json` &mdash; the per-CDM comparison in full
+- `logs/sentinel_<run>.log` &mdash; the complete run transcript
 
 ---
 

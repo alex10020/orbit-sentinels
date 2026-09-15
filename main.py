@@ -371,6 +371,22 @@ def main(argv: list[str] | None = None) -> int:
         if report is not None:
             report.report()
             validation_summary = report.summary()
+            # Persist the per-CDM comparison, not just the aggregate metrics:
+            # this is the evidence that the engine reproduces official alerts.
+            detail_path = config.LOG_DIR / f"validation_{conjunctions.run_id}.json"
+            detail_path.write_text(
+                json.dumps(
+                    {
+                        "summary": validation_summary,
+                        "matches": report.matches,
+                        "misses": report.misses,
+                    },
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
+            log.info("CDM comparison detail -> %s", detail_path.name)
+            validation_summary["detail_file"] = str(detail_path)
 
     # -- Stage 8: performance ----------------------------------------------- #
     profiler.report()

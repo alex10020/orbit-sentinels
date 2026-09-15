@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Orbital Sentinel &mdash; Results</title>
+<style>
+:root { color-scheme: dark; }
+* { box-sizing: border-box; }
+body {
+  margin: 0; padding: 0 16px 64px;
+  background: #05070d; color: #dbe4f0;
+  font: 15px/1.6 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+.wrap { max-width: 1100px; margin: 0 auto; }
+header { padding: 48px 0 8px; border-bottom: 1px solid #1d2740; margin-bottom: 8px; }
+h1 { margin: 0 0 6px; font-size: 30px; letter-spacing: -0.4px; color: #f2f6fc; }
+.sub { color: #8fa6c4; font-size: 14px; }
+h2 {
+  margin: 44px 0 4px; font-size: 20px; color: #f2f6fc;
+  padding-bottom: 8px; border-bottom: 1px solid #1d2740;
+}
+h3 { margin: 26px 0 8px; font-size: 15px; color: #9fb4d0; font-weight: 600; }
+p.note { color: #8fa6c4; font-size: 13.5px; margin: 8px 0 0; }
+.cards { display: flex; flex-wrap: wrap; gap: 12px; margin: 18px 0 6px; }
+.card {
+  flex: 1 1 190px; background: #0d1422; border: 1px solid #1d2740;
+  border-radius: 10px; padding: 14px 16px;
+}
+.card .k { color: #7d90ac; font-size: 11px; letter-spacing: .07em;
+           text-transform: uppercase; }
+.card .v { font-size: 23px; font-weight: 700; color: #f2f6fc; margin-top: 4px; }
+.card .v.good { color: #6fe3a1; }
+.card .v.warn { color: #ffb454; }
+table { border-collapse: collapse; width: 100%; margin-top: 12px; font-size: 13px; }
+th, td { padding: 8px 10px; text-align: right; border-bottom: 1px solid #172033; }
+th { color: #8fa6c4; font-weight: 600; text-align: right;
+     font-size: 11px; letter-spacing: .05em; text-transform: uppercase; }
+td:first-child, th:first-child, td.l, th.l { text-align: left; }
+tbody tr:hover { background: #0d1422; }
+pre {
+  background: #0d1422; border: 1px solid #1d2740; border-radius: 10px;
+  padding: 14px 16px; overflow-x: auto; font-size: 12.5px; line-height: 1.55;
+  color: #b8c9e0; font-family: "Cascadia Code", Consolas, monospace;
+}
+.tag {
+  display: inline-block; padding: 2px 8px; border-radius: 999px;
+  font-size: 11px; font-weight: 600;
+}
+.tag.ok { background: #10361f; color: #6fe3a1; }
+.tag.miss { background: #3a1a1a; color: #ff7b72; }
+.scroll { overflow-x: auto; }
+footer { margin-top: 56px; color: #6d7f99; font-size: 12.5px;
+         border-top: 1px solid #1d2740; padding-top: 16px; }
+</style></head><body><div class="wrap">
+
+<header>
+  <h1>Project Orbital Sentinel &mdash; Results</h1>
+  <div class="sub">Generated 2026-09-15 19:04:37 UTC &middot; 184,624 conjunction
+  alerts in <code>conjunction_alerts.csv</code></div>
+</header>
+
+<h2>1 &nbsp;Engine evidence &mdash; SGP4 + NumPy</h2>
+<p class="note">Run live when this page was generated. The transcript below is
+the actual output of <code>sgp4.api.SatrecArray.sgp4()</code> called on NumPy
+float64 arrays &mdash; shapes, dtypes and a real state vector, not a summary of
+what the code intends to do.</p>
+<div class="cards"><div class='card'><div class='k'>Objects propagated</div><div class='v'>2,000</div></div><div class='card'><div class='k'>State vectors</div><div class='v'>120,000</div></div><div class='card'><div class='k'>SGP4 rate</div><div class='v good'>2,281,742/s</div></div><div class='card'><div class='k'>Array dtype</div><div class='v'>float64</div></div></div>
+<pre>engine        = SatrecArray(2000 Satrec objects)
+jd  array     = shape (60,), dtype float64
+fr  array     = shape (60,), dtype float64
+
+errors, r, v  = sat_array.sgp4(jd, fr)
+
+errors        = shape (2000, 60), 120000 of 120000 returned code 0
+r (positions) = shape (2000, 60, 3), dtype float64   # TEME km
+v (velocities)= shape (2000, 60, 3), dtype float64   # TEME km/s
+
+sample object : VANGUARD 1 (NORAD 5)
+  position r  = [   4851.3729,    8317.6012,    2777.2378] km
+  velocity v  = [   -4.917638,     1.384872,     2.681464] km/s
+  |r|         = 10021.545 km -&gt; altitude 3643.4 km
+  |v|         = 5.7699 km/s (circular LEO is ~7.7)
+
+120,000 state vectors in 0.053 s = 2,281,742 per second</pre>
+<p class="note">A single <code>sgp4()</code> call returns the
+<code>[N, T]</code> error matrix and the <code>[N, T, 3]</code> position and
+velocity tensors. No Python loop touches an individual object, which is what
+makes full-catalog propagation tractable.</p>
+
+<h2>2 &nbsp;Validation against official CDMs</h2>
+<p class="note">Ground truth is the 18th Space Defense Squadron
+<code>cdm_public</code> feed. Our predictions come from public TLEs; theirs come
+from high-precision ephemerides and operator data, so exact agreement is not
+expected &mdash; the residual columns show how close we get.</p>
+<div class="cards"><div class='card'><div class='k'>CDMs in scope</div><div class='v'>20</div></div><div class='card'><div class='k'>Matched</div><div class='v good'>20</div></div><div class='card'><div class='k'>Recall</div><div class='v good'>1.000</div></div><div class='card'><div class='k'>Median miss residual</div><div class='v'>0.228 km</div></div><div class='card'><div class='k'>Mean TCA residual</div><div class='v'>0.4 s</div></div></div>
+<div class='scroll'><table><thead><tr><th class='l'>Objects</th><th>NORAD</th><th>CDM TCA (official)</th><th>Our TCA</th><th>&Delta;t</th><th>CDM miss (km)</th><th>Our miss (km)</th><th>Residual</th><th>Pc</th></tr></thead><tbody><tr><td class='l'>CZ-6A DEB &times; COSMOS 2251 DEB</td><td>34431 / 56625</td><td>2026-09-16 02:54:09</td><td>2026-09-16 02:54:09</td><td>0.6 s</td><td>0.071</td><td>0.770</td><td>+0.699</td><td>2.08e-04</td></tr><tr><td class='l'>FENGYUN 1C DEB &times; CZ-6A DEB</td><td>30847 / 61279</td><td>2026-09-16 07:05:47</td><td>2026-09-16 07:05:47</td><td>0.1 s</td><td>0.029</td><td>0.231</td><td>+0.202</td><td>2.16e-04</td></tr><tr><td class='l'>COSMOS 627 &times; FENGYUN 1C DEB</td><td>7008 / 33737</td><td>2026-09-16 07:38:06</td><td>2026-09-16 07:38:06</td><td>0.3 s</td><td>0.866</td><td>2.077</td><td>+1.211</td><td>2.27e-04</td></tr><tr><td class='l'>CZ-2C DEB &times; NOAA 8</td><td>13923 / 37733</td><td>2026-09-16 11:27:24</td><td>2026-09-16 11:27:24</td><td>0.8 s</td><td>0.627</td><td>3.460</td><td>+2.833</td><td>1.27e-04</td></tr><tr><td class='l'>CZ-6A DEB &times; FENGYUN 1C</td><td>25730 / 54619</td><td>2026-09-16 11:59:48</td><td>2026-09-16 11:59:48</td><td>0.1 s</td><td>0.090</td><td>0.105</td><td>+0.015</td><td>7.49e-04</td></tr><tr><td class='l'>FENGYUN 1C DEB &times; THOR AGENA B R/B</td><td>1807 / 30912</td><td>2026-09-16 13:49:00</td><td>2026-09-16 13:49:00</td><td>0.1 s</td><td>0.317</td><td>0.324</td><td>+0.007</td><td>1.12e-04</td></tr><tr><td class='l'>FENGYUN 1C DEB &times; THOR ABLESTAR DEB</td><td>538 / 29762</td><td>2026-09-16 14:23:25</td><td>2026-09-16 14:23:25</td><td>0.5 s</td><td>0.101</td><td>0.261</td><td>+0.160</td><td>1.21e-04</td></tr><tr><td class='l'>COSMOS 1275 DEB &times; DELTA 1 DEB</td><td>12950 / 13569</td><td>2026-09-16 14:28:30</td><td>2026-09-16 14:28:30</td><td>0.6 s</td><td>0.408</td><td>0.229</td><td>-0.179</td><td>2.19e-04</td></tr><tr><td class='l'>RITE TARGET 2 &times; NOAA 16 DEB</td><td>28455 / 41398</td><td>2026-09-16 15:13:51</td><td>2026-09-16 15:13:51</td><td>0.6 s</td><td>0.113</td><td>0.204</td><td>+0.091</td><td>4.17e-04</td></tr><tr><td class='l'>SL-16 DEB &times; NOAA 16 DEB</td><td>39721 / 41087</td><td>2026-09-16 19:24:31</td><td>2026-09-16 19:24:31</td><td>0.8 s</td><td>0.092</td><td>0.217</td><td>+0.125</td><td>1.77e-04</td></tr><tr><td class='l'>FENGYUN 1C DEB &times; SL-8 R/B</td><td>8597 / 32243</td><td>2026-09-17 02:21:10</td><td>2026-09-17 02:21:10</td><td>1.0 s</td><td>0.167</td><td>0.244</td><td>+0.077</td><td>4.54e-04</td></tr><tr><td class='l'>NOAA 16 DEB &times; CZ-6A DEB</td><td>41080 / 63923</td><td>2026-09-17 09:33:34</td><td>2026-09-17 09:33:34</td><td>0.9 s</td><td>0.209</td><td>0.520</td><td>+0.311</td><td>1.09e-04</td></tr><tr><td class='l'>CZ-6A DEB &times; FENGYUN 1C DEB</td><td>30690 / 60895</td><td>2026-09-17 13:10:57</td><td>2026-09-17 13:10:57</td><td>0.1 s</td><td>0.191</td><td>0.532</td><td>+0.341</td><td>1.27e-04</td></tr><tr><td class='l'>FENGYUN 1C DEB &times; COSMOS 1275 DEB</td><td>12669 / 41832</td><td>2026-09-17 15:07:51</td><td>2026-09-17 15:07:51</td><td>0.3 s</td><td>0.159</td><td>0.693</td><td>+0.534</td><td>1.15e-04</td></tr><tr><td class='l'>NOVA 2 &times; DELTA 1 DEB</td><td>19223 / 21969</td><td>2026-09-17 15:48:46</td><td>2026-09-17 15:48:46</td><td>0.7 s</td><td>0.211</td><td>0.701</td><td>+0.490</td><td>4.01e-04</td></tr><tr><td class='l'>COSMOS 952 DEB &times; UNKNOWN</td><td>44567 / 87845</td><td>2026-09-17 16:21:28</td><td>2026-09-17 16:21:28</td><td>0.4 s</td><td>0.057</td><td>2.611</td><td>+2.554</td><td>1.62e-04</td></tr><tr><td class='l'>COSMOS 860 &times; SL-8 R/B</td><td>9486 / 21876</td><td>2026-09-17 17:24:25</td><td>2026-09-17 17:24:25</td><td>0.2 s</td><td>0.086</td><td>0.339</td><td>+0.253</td><td>3.35e-04</td></tr><tr><td class='l'>SL-3 R/B &times; METEOR 1-17 DEB</td><td>11963 / 57542</td><td>2026-09-17 18:26:38</td><td>2026-09-17 18:26:38</td><td>0.3 s</td><td>0.555</td><td>1.819</td><td>+1.264</td><td>1.53e-04</td></tr><tr><td class='l'>COSMOS 2251 DEB &times; UNKNOWN</td><td>37336 / 87884</td><td>2026-09-18 05:34:52</td><td>2026-09-18 05:34:52</td><td>0.1 s</td><td>0.299</td><td>0.256</td><td>-0.043</td><td>1.81e-04</td></tr><tr><td class='l'>CZ-8A R/B &times; COSMOS 1249 COOLANT</td><td>26508 / 68138</td><td>2026-09-18 10:10:23</td><td>2026-09-18 10:10:23</td><td>0.1 s</td><td>0.462</td><td>0.331</td><td>-0.131</td><td>1.27e-04</td></tr></tbody></table></div>
+
+<p class="note"><strong>Precision is deliberately not headlined.</strong>
+<code>cdm_public</code> exposes only the ~100 most recent public messages, so
+the denominator is truncated ground truth rather than a count of false alarms.
+Recall &mdash; restricted to CDMs whose objects were both propagated and whose
+TCA falls inside the window &mdash; is the defensible metric.</p>
+
+<h2>3 &nbsp;Pipeline performance</h2>
+<div class="cards"><div class='card'><div class='k'>Window</div><div class='v'>72 h</div></div><div class='card'><div class='k'>Objects</div><div class='v'>28,298</div></div><div class='card'><div class='k'>State vectors</div><div class='v'>122,247,360</div></div><div class='card'><div class='k'>Wall clock</div><div class='v'>98.5 s</div></div><div class='card'><div class='k'>Workers</div><div class='v'>22</div></div><div class='card'><div class='k'>Peak RSS</div><div class='v'>352 MB</div></div></div>
+<div class='scroll'><table><thead><tr><th class='l'>Stage</th><th>Seconds</th><th>Share</th><th>Units/sec</th></tr></thead><tbody><tr><td class='l'>parallel_screen</td><td>85.83</td><td>87.1%</td><td>1,424,272</td></tr><tr><td class='l'>alerts_csv</td><td>3.99</td><td>4.0%</td><td>0</td></tr><tr><td class='l'>ingestion</td><td>1.31</td><td>1.3%</td><td>0</td></tr><tr><td class='l'>deduplication</td><td>0.60</td><td>0.6%</td><td>0</td></tr><tr><td class='l'>validation</td><td>0.33</td><td>0.3%</td><td>0</td></tr><tr><td class='l'>tca_refinement</td><td>0.15</td><td>0.2%</td><td>3,314</td></tr><tr><td class='l'>satrec_array_build</td><td>0.02</td><td>0.0%</td><td>0</td></tr></tbody></table></div>
+
+<h2>4 &nbsp;Highest-risk conjunctions</h2>
+<p class="note">Closest 25 of 184,624 flagged encounters, after
+deduplication and sub-second TCA refinement.</p>
+<div class='scroll'><table><thead><tr><th class='l'>TCA (UTC)</th><th class='l'>Object 1</th><th class='l'>Object 2</th><th>Miss (km)</th><th>Rel (km/s)</th><th>Alt (km)</th></tr></thead><tbody><tr><td class='l'>2026-09-17 13:09:51</td><td class='l'>STARLINK-31167</td><td class='l'>STARLINK-36979</td><td>0.008</td><td>2.29</td><td>478</td></tr><tr><td class='l'>2026-09-17 04:14:47</td><td class='l'>JILIN-01 GAOFEN 3E</td><td class='l'>CZ-6A DEB</td><td>0.011</td><td>14.04</td><td>346</td></tr><tr><td class='l'>2026-09-18 13:59:29</td><td class='l'>STARLINK-4659</td><td class='l'>STARLINK-33531</td><td>0.016</td><td>2.33</td><td>488</td></tr><tr><td class='l'>2026-09-18 01:45:39</td><td class='l'>STARLINK-30281</td><td class='l'>STARLINK-30799</td><td>0.019</td><td>1.28</td><td>489</td></tr><tr><td class='l'>2026-09-18 18:28:02</td><td class='l'>STARLINK-5397</td><td class='l'>STARLINK-30506</td><td>0.023</td><td>7.66</td><td>479</td></tr><tr><td class='l'>2026-09-17 23:36:18</td><td class='l'>STARLINK-31212</td><td class='l'>STARLINK-34070</td><td>0.025</td><td>6.15</td><td>478</td></tr><tr><td class='l'>2026-09-18 10:19:12</td><td class='l'>STARLINK-5161</td><td class='l'>STARLINK-35632</td><td>0.030</td><td>2.11</td><td>455</td></tr><tr><td class='l'>2026-09-18 00:26:53</td><td class='l'>STARLINK-31446</td><td class='l'>STARLINK-32725</td><td>0.038</td><td>5.05</td><td>486</td></tr><tr><td class='l'>2026-09-17 22:49:51</td><td class='l'>STARLINK-6247</td><td class='l'>STARLINK-32915</td><td>0.039</td><td>6.19</td><td>479</td></tr><tr><td class='l'>2026-09-18 00:16:58</td><td class='l'>STARLINK-30155</td><td class='l'>STARLINK-36920</td><td>0.039</td><td>9.94</td><td>481</td></tr><tr><td class='l'>2026-09-18 16:58:17</td><td class='l'>STARLINK-5745</td><td class='l'>STARLINK-36141</td><td>0.039</td><td>2.62</td><td>486</td></tr><tr><td class='l'>2026-09-17 16:30:02</td><td class='l'>STARLINK-37527</td><td class='l'>STARLINK-38048</td><td>0.039</td><td>0.64</td><td>456</td></tr><tr><td class='l'>2026-09-17 21:23:28</td><td class='l'>STARLINK-31258</td><td class='l'>STARLINK-37590</td><td>0.041</td><td>4.77</td><td>470</td></tr><tr><td class='l'>2026-09-17 11:24:21</td><td class='l'>STARLINK-30480</td><td class='l'>STARLINK-35991</td><td>0.041</td><td>7.87</td><td>486</td></tr><tr><td class='l'>2026-09-17 17:58:29</td><td class='l'>STARLINK-5984</td><td class='l'>STARLINK-36944</td><td>0.042</td><td>6.34</td><td>459</td></tr><tr><td class='l'>2026-09-17 00:00:11</td><td class='l'>STARLINK-31908</td><td class='l'>STARLINK-33972</td><td>0.045</td><td>5.04</td><td>478</td></tr><tr><td class='l'>2026-09-16 09:25:54</td><td class='l'>STARLINK-3647</td><td class='l'>STARLINK-34321</td><td>0.046</td><td>7.23</td><td>456</td></tr><tr><td class='l'>2026-09-18 08:19:32</td><td class='l'>STARLINK-32789</td><td class='l'>STARLINK-32767</td><td>0.048</td><td>5.02</td><td>488</td></tr><tr><td class='l'>2026-09-18 13:39:11</td><td class='l'>STARLINK-31793</td><td class='l'>STARLINK-37523</td><td>0.049</td><td>2.32</td><td>468</td></tr><tr><td class='l'>2026-09-17 14:06:06</td><td class='l'>STARLINK-5443</td><td class='l'>STARLINK-32690</td><td>0.051</td><td>7.19</td><td>456</td></tr><tr><td class='l'>2026-09-17 00:50:29</td><td class='l'>STARLINK-31517</td><td class='l'>STARLINK-36970</td><td>0.051</td><td>2.52</td><td>457</td></tr><tr><td class='l'>2026-09-17 15:36:37</td><td class='l'>STARLINK-31395</td><td class='l'>STARLINK-35675</td><td>0.051</td><td>9.84</td><td>484</td></tr><tr><td class='l'>2026-09-17 14:53:27</td><td class='l'>STARLINK-30878</td><td class='l'>STARLINK-35678</td><td>0.052</td><td>2.65</td><td>486</td></tr><tr><td class='l'>2026-09-17 03:46:51</td><td class='l'>JILIN-01 GAOFEN 2B</td><td class='l'>IOD2_STARTICAL</td><td>0.053</td><td>5.45</td><td>511</td></tr><tr><td class='l'>2026-09-17 17:41:35</td><td class='l'>STARLINK-33598</td><td class='l'>STARLINK-37185</td><td>0.054</td><td>2.32</td><td>457</td></tr></tbody></table></div>
+
+<footer>
+Orbital Sentinel &middot; vectorized SGP4 propagation, cKDTree spatial
+screening, CDM validation. Source data: Space-Track.org.
+</footer>
+
+</div></body></html>
