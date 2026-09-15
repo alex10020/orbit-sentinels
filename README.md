@@ -19,24 +19,59 @@ actually decides whether the output is worth anything. See
 
 ## Results from a full run
 
-72-hour forecast, 1-minute steps, 5 km screening threshold, whole LEO catalog:
+72-hour forecast, 1-minute steps, 5 km screening threshold, whole LEO catalog,
+on one machine with no parallelism:
 
-```
-28,301 objects x 4,320 time steps = 122,260,320 state vectors
-```
+| | |
+|---|---|
+| Objects propagated | 28,298 |
+| Time steps | 4,320 |
+| State vectors computed | **122,247,360** |
+| Wall clock | **602 s** (10 min) |
+| SGP4 propagation rate | 3.0M state vectors/sec |
+| End-to-end rate | 203k state vectors/sec |
+| Brute-force comparisons avoided | ~1.73 x 10^12 |
+| Resident memory | 468 MB, flat across the run |
+| Distinct encounters within 5 km | 184,127 |
+
+### Accuracy against official ground truth
+
+Validated against 18th Space Defense Squadron CDMs, using only public TLEs
+against their high-precision ephemerides:
+
+| | |
+|---|---|
+| **Recall** | **20 / 20 = 1.000** |
+| Miss-distance residual | median **0.228 km**, mean 0.576, max 2.83 |
+| TCA residual | mean **0.6 s**, max 1.2 s |
 
 The top of the risk table is populated by exactly the objects operational SSA
-cares about — Starlink shell crossings, and debris from the Fengyun-1C ASAT
-test, the Iridium 33 / Cosmos 2251 collision, and the CZ-6A upper-stage
+cares about -- Starlink shell crossings, and debris from the CZ-6A upper-stage
 breakups:
 
 ```
 TCA (UTC)             OBJECT 1                   OBJECT 2               MISS km  REL km/s   ALT km
-2026-09-15 16:17:46   52491 STARLINK-3908        66900 STARLINK-36074     0.352     5.551      468
-2026-09-15 15:51:47   54592 CZ-6A DEB            64523 KUIPER-00063       1.067    14.379      625
-2026-09-15 15:53:47    6157 THORAD AGENA D DEB   54965 CZ-6A DEB          1.528    14.045      807
-2026-09-15 15:49:47   33850 IRIDIUM 33 DEB       38725 FENGYUN 1C DEB     1.895    13.548      756
+2026-09-17 13:09:51   58744 STARLINK-31167       67996 STARLINK-36979     0.008     2.292      479
+2026-09-17 04:14:47   46457 JILIN-01 GAOFEN 3E   54352 CZ-6A DEB          0.011    14.044      347
+2026-09-18 13:59:29   54841 STARLINK-4659        63399 STARLINK-33531     0.016     2.330      487
+2026-09-18 01:45:39   57716 STARLINK-30281       58121 STARLINK-30799     0.019     1.279      488
 ```
+
+### Reading these numbers honestly
+
+**Precision is reported as 0.000, and that number is meaningless.** The engine
+flags 184,127 encounters and only 20 CDMs exist to corroborate them, because
+`cdm_public` exposes just the ~100 most recent *public* messages. The
+denominator is truncated ground truth, not a count of false alarms. Recall is
+the defensible metric; see [Validation](#validation-against-official-cdms).
+
+**184,127 encounters over 72 hours is physically correct, not a bug.** The
+kinetic-theory estimate for a 5 km cross-section across 28,298 objects in the
+LEO shell predicts ~10^5 events over this window -- the same order. The lesson
+is that **5 km is a screening volume, not an alert threshold.** Operational SSA
+ranks candidates by probability of collision (the CDMs here carry Pc ~ 10^-4),
+not by raw miss distance. The ranked table is the actionable output; the full
+list is the screen that feeds it.
 
 ---
 
@@ -51,7 +86,7 @@ cp .env.example .env           # then fill in your Space-Track credentials
 
 python main.py                 # 10-minute smoke test, first 1,000 objects
 python main.py --full          # full 72-hour forecast over the LEO catalog
-python test_sentinel.py        # 21 correctness tests, no pytest required
+python test_sentinel.py        # 25 correctness tests, no pytest required
 ```
 
 ### Useful invocations
@@ -213,15 +248,32 @@ reading the metrics:
 
 ## Performance notes
 
-Memory is the binding constraint, not CPU. A full 72-hour window at once would
-allocate `N x T x 3 x 8` bytes twice over — **5.8 GB** at 30,000 objects — so
-propagation is chunked along the time axis, sized to a 2 GB budget by default
-(`--chunk-steps`). Resident memory stays flat across the run regardless of
-window length.
+**Memory is bounded by chunking, not by luck.** A full 72-hour window
+propagated at once would allocate `N x T x 3 x 8` bytes twice over -- **5.8 GB**
+at 30,000 objects -- so propagation is chunked along the time axis, sized to a
+2 GB budget by default (`--chunk-steps`). Resident memory stays flat at ~468 MB
+regardless of window length.
 
-Measured on the reference machine: SGP4 propagation sustains ~3M state
-vectors/sec. The spatial search, not the physics, dominates wall-clock time at
-full catalog size — each time step rebuilds a fresh cKDTree over ~28,000 points.
+**The search dominates, not the physics.** SGP4 propagation is 6.8% of wall
+clock; the spatial search is 92.1%. It is memory-bandwidth bound on roughly 1.3
+billion candidate pairs gathered across the run, not compute bound.
+
+**Finer time steps are cheaper, which is counterintuitive.** The screening
+radius grows linearly with the step (`v_max * dt/2`), so candidate pairs per
+step grow as roughly `dt^3`, while the number of steps only falls as `1/dt`.
+Total work therefore *drops* as the step shrinks, until fixed per-step tree
+construction takes over. Measured over a fixed forecast span:
+
+| Step | Screening radius | Relative cost |
+|---|---|---|
+| 2.0 min | 965 km | 2.5x |
+| 1.0 min | 485 km | 1.2x |
+| **0.5 min** | **245 km** | **1.0x** (optimum) |
+| 0.25 min | 125 km | 1.1x |
+
+So `--step 0.5` is both faster than the 1-minute default *and* more accurate,
+since it shortens the linear-motion extrapolation in stage 2. The default stays
+at 1 minute to match the specification.
 
 ---
 
