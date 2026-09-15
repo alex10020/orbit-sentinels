@@ -1,0 +1,27 @@
+# Secrets -- never commit
+.env
+.env.local
+
+# Virtual environment
+venv/
+.venv/
+env/
+
+# Cached catalogs & run artifacts
+data/
+logs/
+*.log
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+build/
+dist/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
