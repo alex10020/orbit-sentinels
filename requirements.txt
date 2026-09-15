@@ -1,5 +1,13 @@
+# Core engine
 requests>=2.31.0
 numpy>=1.26.0
 scipy>=1.11.0
 sgp4>=2.23
 python-dotenv>=1.0.0
+
+# Alert table output and terminal progress
+pandas>=2.0.0
+tqdm>=4.66.0
+
+# 3D visualization (visualize.py)
+plotly>=5.18.0

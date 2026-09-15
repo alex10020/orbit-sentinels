@@ -12,6 +12,9 @@ data/
 logs/
 *.log
 
+# Generated alert table (~35 MB for a full run) -- regenerate with main.py
+conjunction_alerts.csv
+
 # Python
 __pycache__/
 *.py[cod]

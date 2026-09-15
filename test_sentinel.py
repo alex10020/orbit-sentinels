@@ -25,6 +25,13 @@ from propagation import (
     estimate_memory_gb,
     refine_tca,
 )
+from parallel import (
+    MIN_CHUNK_STEPS,
+    CatalogPayload,
+    init_worker,
+    plan_chunks,
+    worth_parallelizing,
+)
 from spatial_index import detect_pairs, required_screening_radius
 from validator import CDMRecord, deduplicate_cdms, parse_cdms, validate
 
@@ -43,6 +50,8 @@ def _make_object(norad: int, line1: str = ISS_L1, line2: str = ISS_L2) -> SpaceO
         satrec=satrec,
         mean_motion=15.5,
         eccentricity=0.0004378,
+        tle_line1=line1,
+        tle_line2=line2,
     )
 
 
@@ -318,6 +327,66 @@ def test_tca_offset_shifts_the_reported_timestamp():
 
 
 # --------------------------------------------------------------------------- #
+# Multiprocessing
+# --------------------------------------------------------------------------- #
+def test_chunk_planning_keeps_workers_fed_and_vectorized():
+    """Chunks must fit the memory cap, stay wide, and still fill the pool."""
+    # A memory cap alone would hand a short window to a single worker.
+    assert plan_chunks(120, 22, memory_cap_steps=120) >= MIN_CHUNK_STEPS
+    assert plan_chunks(120, 22, memory_cap_steps=120) < 120
+
+    # The cap is never breached, and chunks never collapse to single steps.
+    for n_steps in (120, 360, 1440, 4320):
+        chunk = plan_chunks(n_steps, 22, memory_cap_steps=120)
+        assert MIN_CHUNK_STEPS <= chunk <= 120
+
+
+def test_small_jobs_skip_the_process_pool():
+    """Pool startup costs more than a small screen saves."""
+    assert not worth_parallelizing(1000, 10, n_workers=22)
+    assert not worth_parallelizing(28000, 1, n_workers=22)
+    assert not worth_parallelizing(28000, 4320, n_workers=1)
+    assert worth_parallelizing(28000, 4320, n_workers=22)
+
+
+def test_catalog_payload_is_picklable():
+    """Satrec cannot be pickled, so workers must receive TLE text instead."""
+    import pickle
+
+    from sgp4.api import Satrec as _Satrec
+
+    with pytest_raises(TypeError):
+        pickle.dumps(_Satrec.twoline2rv(ISS_L1, ISS_L2))
+
+    payload = CatalogPayload.from_objects([_make_object(1), _make_object(2)])
+    restored = pickle.loads(pickle.dumps(payload))
+    assert len(restored) == 2
+    assert restored.line1[0] == ISS_L1
+    assert restored.line2[0] == ISS_L2
+
+    # And the payload must be enough to rebuild a working propagator.
+    init_worker(restored)
+    import parallel as _parallel
+
+    assert _parallel._WORKER_SAT_ARRAY is not None
+
+
+def pytest_raises(exc_type):
+    """Minimal `pytest.raises` stand-in so this file runs without pytest."""
+    import contextlib
+
+    @contextlib.contextmanager
+    def _cm():
+        try:
+            yield
+        except exc_type:
+            return
+        raise AssertionError(f"expected {exc_type.__name__}")
+
+    return _cm()
+
+
+# --------------------------------------------------------------------------- #
 # TCA refinement
 # --------------------------------------------------------------------------- #
 def test_refine_tca_finds_a_closer_approach():
@@ -488,8 +557,11 @@ def test_out_of_scope_cdms_are_not_counted_as_misses():
 
 
 if __name__ == "__main__":
+    import multiprocessing as mp
     import sys
     import traceback
+
+    mp.freeze_support()
 
     tests = [
         (name, fn)

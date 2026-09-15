@@ -20,19 +20,19 @@ actually decides whether the output is worth anything. See
 ## Results from a full run
 
 72-hour forecast, 1-minute steps, 5 km screening threshold, whole LEO catalog,
-on one machine with no parallelism:
+across 22 CPU cores:
 
 | | |
 |---|---|
 | Objects propagated | 28,298 |
 | Time steps | 4,320 |
 | State vectors computed | **122,247,360** |
-| Wall clock | **602 s** (10 min) |
-| SGP4 propagation rate | 3.0M state vectors/sec |
-| End-to-end rate | 203k state vectors/sec |
+| Wall clock | **98.5 s** (6.1x faster than single-process 602 s) |
+| Screening throughput | 1.42M state vectors/sec across 22 cores |
+| End-to-end rate | 1.24M state vectors/sec |
 | Brute-force comparisons avoided | ~1.73 x 10^12 |
-| Resident memory | 468 MB, flat across the run |
-| Distinct encounters within 5 km | 184,127 |
+| Resident memory | 352 MB (parent), flat across the run |
+| Distinct encounters within 5 km | 184,624 |
 
 ### Accuracy against official ground truth
 
@@ -60,12 +60,12 @@ TCA (UTC)             OBJECT 1                   OBJECT 2               MISS km 
 ### Reading these numbers honestly
 
 **Precision is reported as 0.000, and that number is meaningless.** The engine
-flags 184,127 encounters and only 20 CDMs exist to corroborate them, because
+flags 184,624 encounters and only 20 CDMs exist to corroborate them, because
 `cdm_public` exposes just the ~100 most recent *public* messages. The
 denominator is truncated ground truth, not a count of false alarms. Recall is
 the defensible metric; see [Validation](#validation-against-official-cdms).
 
-**184,127 encounters over 72 hours is physically correct, not a bug.** The
+**184,624 encounters over 72 hours is physically correct, not a bug.** The
 kinetic-theory estimate for a 5 km cross-section across 28,298 objects in the
 LEO shell predicts ~10^5 events over this window -- the same order. The lesson
 is that **5 km is a screening volume, not an alert threshold.** Operational SSA
@@ -86,7 +86,8 @@ cp .env.example .env           # then fill in your Space-Track credentials
 
 python main.py                 # 10-minute smoke test, first 1,000 objects
 python main.py --full          # full 72-hour forecast over the LEO catalog
-python test_sentinel.py        # 25 correctness tests, no pytest required
+python visualize.py --open     # render index.html and open it
+python test_sentinel.py        # 28 correctness tests, no pytest required
 ```
 
 ### Useful invocations
@@ -96,6 +97,9 @@ python main.py --hours 6 --max-objects 5000     # medium run
 python main.py --full --refresh                 # force a fresh catalog download
 python main.py --full --threshold 10            # widen the screening radius
 python main.py --full --no-refine --no-validate # fastest possible screen
+python main.py --full --workers 8               # cap the process pool
+python main.py --full --no-parallel             # single-process path
+python main.py --full --step 0.5                # faster AND more accurate
 ```
 
 Run `python main.py --help` for the full flag list.
@@ -109,10 +113,12 @@ orbital-sentinel/
 ├── config.py          Constants, .env loading, tunable thresholds
 ├── ingestion.py       Space-Track auth, rate-limited fetch, caching, TLE parsing
 ├── propagation.py     SatrecArray vectorized SGP4 + sub-second TCA refinement
-├── spatial_index.py   cKDTree construction and pairwise conjunction query
+├── spatial_index.py   cKDTree construction and two-stage conjunction query
+├── parallel.py        Multiprocessing pool over independent time chunks
 ├── validator.py       Benchmarking against official 18th SDS CDMs
-├── logger.py          Profiling, alert tables, JSON/CSV output
+├── logger.py          Profiling, alert tables, pandas/JSON/CSV output
 ├── main.py            Pipeline orchestrator and CLI
+├── visualize.py       Plotly 3D globe -> index.html
 └── test_sentinel.py   Correctness tests
 ```
 
@@ -120,11 +126,27 @@ Data flows `Ingestion -> SatrecArray -> cKDTree -> Conjunction Log -> Metrics`.
 
 ### Outputs
 
-Every run writes to `logs/` (gitignored):
+The headline artifact is **`conjunction_alerts.csv`** in the project root: the
+final, filtered, deduplicated alert table written via pandas, sorted closest
+approach first. It carries the TEME Cartesian position (`x_km`, `y_km`, `z_km`)
+of each encounter so `visualize.py` can plot it without re-running the
+propagator. Everything else lands in `logs/` (gitignored):
 
-- `conjunctions_<run>.csv` / `.json` — the ranked encounter list
+- `conjunctions_<run>.csv` / `.json` — the same events, timestamped per run
 - `run_summary_<run>.json` — throughput, per-stage profile, validation metrics
 - `sentinel_<run>.log` — full run transcript
+
+`visualize.py` reads the alert CSV and writes a standalone **`index.html`**:
+Earth as a shaded globe with a wireframe graticule, every conjunction plotted
+at its true 3D position, coloured by miss distance, with hover labels naming
+both objects. Plotly is inlined, so the page works offline with no server.
+
+Because a full screen yields ~184,000 encounters and a browser will not enjoy
+all of them at once, the default plots the closest 15,000 (`--limit 0` for
+everything).
+
+All storage is local. There is no database, cloud or otherwise, in the
+pipeline.
 
 The catalog is cached to `data/latest_catalog.json` and reused for
 `CATALOG_MAX_AGE_HOURS` (default 8), so repeated runs do not re-hit the API.
@@ -246,6 +268,47 @@ reading the metrics:
 
 ---
 
+## Parallel execution
+
+Time chunks are independent -- each needs nothing from its neighbours and
+produces its own event list -- so the screen fans out across cores with
+`multiprocessing.Pool`. Measured on the full 72-hour window, 22 cores:
+
+| | Wall clock |
+|---|---|
+| Single process (`--no-parallel`) | 602 s |
+| 22 worker processes (default) | **98.5 s** |
+| | **6.1x** |
+
+Both paths produce **byte-identical** event lists; a test asserts this rather
+than trusting it.
+
+Three details were not optional:
+
+**`Satrec` objects cannot be pickled.** The parent cannot ship a built
+`SatrecArray` to a worker. Each worker instead receives the raw TLE text once
+through the pool initializer and builds its own `SatrecArray` in its own
+address space -- paid once per worker, not once per chunk.
+
+**Chunk size needs a floor as well as a ceiling.** Memory bounds a chunk from
+above (~120 steps), but sizing by memory alone gave a 30-step window a single
+chunk, so one worker did everything while 21 idled. Sizing by worker count
+alone was worse: it drove chunks down to *one step each*, which throws away the
+vectorization the whole engine is built on and leaves only pickling overhead --
+measured at zero speedup. Chunks are now sized to fill the pool, floored at 8
+steps, and capped by the memory budget.
+
+**Small jobs must skip the pool entirely.** Starting 22 workers that each parse
+28,000 TLEs costs more than a short screen saves: a 30-step job took 19.8 s
+through the pool and 1.0 s without it. Jobs below ~2M state vectors take the
+single-process path automatically.
+
+Why 6.1x and not 22x: worker startup is a fixed ~10 s, and the search is
+memory-bandwidth bound, so cores contend for the same memory rather than
+scaling linearly.
+
+---
+
 ## Performance notes
 
 **Memory is bounded by chunking, not by luck.** A full 72-hour window
@@ -254,9 +317,11 @@ at 30,000 objects -- so propagation is chunked along the time axis, sized to a
 2 GB budget by default (`--chunk-steps`). Resident memory stays flat at ~468 MB
 regardless of window length.
 
-**The search dominates, not the physics.** SGP4 propagation is 6.8% of wall
-clock; the spatial search is 92.1%. It is memory-bandwidth bound on roughly 1.3
-billion candidate pairs gathered across the run, not compute bound.
+**The search dominates, not the physics.** In the single-process profile SGP4
+propagation is 6.8% of wall clock and the spatial search is 92.1%. It is
+memory-bandwidth bound on roughly 1.3 billion candidate pairs gathered across
+the run, not compute bound -- which is why parallel scaling falls short of
+linear.
 
 **Finer time steps are cheaper, which is counterintuitive.** The screening
 radius grows linearly with the step (`v_max * dt/2`), so candidate pairs per
@@ -289,9 +354,8 @@ exposed, rotate it at <https://www.space-track.org>.
 
 Not yet implemented, in rough order of expected payoff:
 
-1. **Parallel time-chunk propagation** — chunks are independent, so
-   `multiprocessing` can distribute the 72-hour window across cores. This is
-   the largest remaining win: the coarse tree query now dominates wall-clock.
+1. ~~Parallel time-chunk propagation~~ — **done**, 6.1x on 22 cores. See
+   [Parallel execution](#parallel-execution).
 2. **float32 positions for the tree** — halves memory traffic in the search
    stage; 5 km resolution does not need float64 for the *screening* pass, only
    for the exact-distance and refinement passes.

@@ -181,6 +181,12 @@ class ConjunctionEvent:
     miss_distance_km: float
     relative_speed_km_s: float
     altitude_km: float
+    # TEME Cartesian midpoint of the encounter, in km. Carried through to the
+    # CSV so visualize.py can plot each conjunction in 3D without re-running
+    # the propagator.
+    x_km: float = 0.0
+    y_km: float = 0.0
+    z_km: float = 0.0
     # Set when propagation.refine_tca() resolved the TCA below the step size.
     refined: bool = False
 
@@ -202,6 +208,9 @@ class ConjunctionLog:
         "miss_distance_km",
         "relative_speed_km_s",
         "altitude_km",
+        "x_km",
+        "y_km",
+        "z_km",
         "refined",
     ]
 
@@ -250,6 +259,34 @@ class ConjunctionLog:
 
         self.log.info("Wrote %d conjunction events -> %s", len(rows), csv_path.name)
         return json_path, csv_path
+
+    def to_dataframe(self):
+        """The alert table as a pandas DataFrame, closest approach first."""
+        import pandas as pd
+
+        rows = [
+            e.as_row() for e in sorted(self.events, key=lambda e: e.miss_distance_km)
+        ]
+        frame = pd.DataFrame(rows, columns=self.FIELDS)
+        if frame.empty:
+            # Preserve the schema so downstream readers do not have to special
+            # case an empty run.
+            return frame.astype(
+                {"norad_1": "int64", "norad_2": "int64", "refined": "bool"},
+                errors="ignore",
+            )
+        return frame
+
+    def write_alerts_csv(self, path: Path | str) -> Path:
+        """Write the final filtered alerts to a local CSV via pandas."""
+        path = Path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        frame = self.to_dataframe()
+        frame.to_csv(path, index=False)
+        self.log.info(
+            "Wrote %d conjunction alerts -> %s", len(frame), path
+        )
+        return path
 
     def print_table(self, limit: int = 20) -> None:
         """Render the highest-risk conjunctions as an aligned console table."""

@@ -37,6 +37,10 @@ class SpaceObject:
     satrec: Satrec = field(repr=False)
     mean_motion: float = 0.0
     eccentricity: float = 0.0
+    # The raw element set is retained because Satrec objects cannot be pickled:
+    # multiprocessing workers rebuild their own SatrecArray from these lines.
+    tle_line1: str = ""
+    tle_line2: str = ""
 
     @property
     def semi_major_axis_km(self) -> float:
@@ -370,6 +374,8 @@ def parse_records(
             satrec=satrec,
             mean_motion=_to_float(record.get("MEAN_MOTION")),
             eccentricity=_to_float(record.get("ECCENTRICITY")),
+            tle_line1=line1,
+            tle_line2=line2,
         )
 
         if max_epoch_age_days and obj.epoch_age_days > max_epoch_age_days:

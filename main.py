@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import multiprocessing as mp
 import sys
 from datetime import datetime, timedelta, timezone
 
@@ -28,6 +29,12 @@ from propagation import (
     estimate_memory_gb,
     refine_tca,
 )
+from parallel import (
+    plan_chunks,
+    resolve_worker_count,
+    run_parallel,
+    worth_parallelizing,
+)
 from spatial_index import (
     detections_to_events,
     required_screening_radius,
@@ -40,6 +47,19 @@ log = get_logger("main")
 # Defaults for the smoke test described in the spec.
 DEMO_HOURS = 10 / 60
 DEMO_MAX_OBJECTS = 1000
+
+
+def _progress_bar(iterable, enabled: bool):
+    """Wrap an iterable in tqdm when available; tqdm is never required."""
+    if not enabled:
+        return iterable
+    try:
+        from tqdm import tqdm
+    except ImportError:
+        return iterable
+    return tqdm(
+        iterable, desc="Screening chunks", unit="chunk", dynamic_ncols=True
+    )
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -95,6 +115,24 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--chunk-steps", type=int, default=None,
         help="Time steps per propagation chunk (default: sized to a 2 GB budget).",
+    )
+    parser.add_argument(
+        "--workers", type=int, default=0,
+        help="Worker processes for parallel screening (default: all cores; "
+             "1 runs single-process).",
+    )
+    parser.add_argument(
+        "--no-parallel", action="store_true",
+        help="Force the single-process path.",
+    )
+    parser.add_argument(
+        "--no-progress", action="store_true",
+        help="Disable the tqdm progress bar.",
+    )
+    parser.add_argument(
+        "--alerts-csv", default="conjunction_alerts.csv",
+        help="Path for the final pandas alert table "
+             "(default: conjunction_alerts.csv).",
     )
     parser.add_argument(
         "--no-refine", action="store_true",
@@ -188,43 +226,83 @@ def main(argv: list[str] | None = None) -> int:
 
     # -- Stages 3 & 4: propagate and search --------------------------------- #
     conjunctions = ConjunctionLog()
-    steps_done = 0
     total_pairs_examined = 0
-    brute_force_equivalent = 0.0
 
-    # Chunks are sliced explicitly rather than via propagate_chunked() so the
-    # profiler brackets the actual SGP4 call instead of a lazy generator step.
-    for offset in range(0, n_steps, chunk_steps):
-        end = min(offset + chunk_steps, n_steps)
-        sub_grid = grid.slice(offset, end)
+    n_workers = resolve_worker_count(args.workers)
+    use_parallel = (
+        not args.no_parallel
+        and args.workers != 1
+        and worth_parallelizing(len(engine), n_steps, n_workers)
+    )
+    if use_parallel:
+        # Memory bounds the chunk from above; worker count bounds it from below,
+        # so every core gets work instead of one chunk going to one process.
+        chunk_steps = plan_chunks(n_steps, n_workers, memory_cap_steps=chunk_steps)
+        log.info("Parallel chunk size: %d steps.", chunk_steps)
+    else:
+        n_workers = 1
 
-        with profiler.stage("propagation", units=len(engine) * (end - offset)):
-            result = engine.propagate(sub_grid)
-
-        with profiler.stage("spatial_search", units=result.n_steps):
-            for abs_step, stamp, detection in scan_result(
-                result,
-                engine,
-                step_offset=offset,
+    if use_parallel:
+        # Time chunks are independent, so the whole screen fans out across
+        # cores. Workers rebuild their own SatrecArray from TLE lines because
+        # Satrec objects cannot be pickled.
+        with profiler.stage("parallel_screen", units=len(engine) * n_steps):
+            events, steps_done = run_parallel(
+                objects,
+                grid,
+                chunk_steps=chunk_steps,
                 threshold_km=args.threshold,
                 min_rel_speed_kms=args.min_rel_speed,
-            ):
-                conjunctions.extend(detections_to_events(detection, engine, stamp))
-                total_pairs_examined += len(detection)
+                workers=args.workers,
+                show_progress=not args.no_progress,
+            )
+        conjunctions.extend(events)
+        total_pairs_examined = len(events)
+        avg_live = len(engine)
+        brute_force_equivalent = avg_live * (avg_live - 1) / 2 * n_steps
+    else:
+        log.info("Running the single-process screening path.")
+        steps_done = 0
+        brute_force_equivalent = 0.0
+        chunk_offsets = list(range(0, n_steps, chunk_steps))
+        progress = _progress_bar(chunk_offsets, not args.no_progress)
 
-        steps_done += result.n_steps
-        # Average live objects per step in this chunk, converted to the number
-        # of distance comparisons an O(N^2) screen would have needed.
-        avg_live = np.count_nonzero(result.valid) / result.n_steps
-        brute_force_equivalent += avg_live * (avg_live - 1) / 2 * result.n_steps
-        log.info(
-            "  progress %5.1f%%  (%d/%d steps)  events so far: %d  RSS %.0f MB",
-            100.0 * steps_done / n_steps,
-            steps_done,
-            n_steps,
-            len(conjunctions.events),
-            memory_mb(),
-        )
+        # Chunks are sliced explicitly rather than via propagate_chunked() so
+        # the profiler brackets the actual SGP4 call, not a lazy generator step.
+        for offset in progress:
+            end_step = min(offset + chunk_steps, n_steps)
+            sub_grid = grid.slice(offset, end_step)
+
+            with profiler.stage(
+                "propagation", units=len(engine) * (end_step - offset)
+            ):
+                result = engine.propagate(sub_grid)
+
+            with profiler.stage("spatial_search", units=result.n_steps):
+                for abs_step, stamp, detection in scan_result(
+                    result,
+                    engine,
+                    step_offset=offset,
+                    threshold_km=args.threshold,
+                    min_rel_speed_kms=args.min_rel_speed,
+                ):
+                    conjunctions.extend(
+                        detections_to_events(detection, engine, stamp)
+                    )
+                    total_pairs_examined += len(detection)
+
+            steps_done += result.n_steps
+            # Average live objects per step, converted to the number of
+            # distance comparisons an O(N^2) screen would have needed.
+            avg_live = np.count_nonzero(result.valid) / result.n_steps
+            brute_force_equivalent += avg_live * (avg_live - 1) / 2 * result.n_steps
+
+    log.info(
+        "Screened %d steps; %d raw detections; RSS %.0f MB.",
+        steps_done,
+        len(conjunctions.events),
+        memory_mb(),
+    )
 
     raw_event_count = len(conjunctions.events)
     with profiler.stage("deduplication"):
@@ -276,6 +354,8 @@ def main(argv: list[str] | None = None) -> int:
     # -- Stage 6: output ---------------------------------------------------- #
     conjunctions.print_table(limit=args.top)
     json_path, csv_path = conjunctions.write()
+    with profiler.stage("alerts_csv"):
+        alerts_path = conjunctions.write_alerts_csv(args.alerts_csv)
 
     # -- Stage 7: validation ------------------------------------------------ #
     validation_summary = None
@@ -328,7 +408,12 @@ def main(argv: list[str] | None = None) -> int:
         "wall_clock_seconds": round(profiler.elapsed, 2),
         "stages": profiler.summary(),
         "validation": validation_summary,
-        "outputs": {"json": str(json_path), "csv": str(csv_path)},
+        "workers": n_workers,
+        "outputs": {
+            "json": str(json_path),
+            "csv": str(csv_path),
+            "alerts_csv": str(alerts_path),
+        },
     }
     summary_path = config.LOG_DIR / f"run_summary_{conjunctions.run_id}.json"
     summary_path.write_text(json.dumps(run_summary, indent=2), encoding="utf-8")
@@ -337,4 +422,7 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
+    # Required before creating a Pool when the interpreter uses spawn (Windows)
+    # or when this script is frozen into an executable.
+    mp.freeze_support()
     sys.exit(main())

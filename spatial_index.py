@@ -80,6 +80,7 @@ class PairDetection:
     rel_speed_kms: np.ndarray
     altitude_km: np.ndarray
     tca_offset_s: np.ndarray
+    midpoint_km: np.ndarray  # [M, 3] TEME position of the encounter
 
     def __len__(self) -> int:
         return int(self.index_i.shape[0])
@@ -95,6 +96,7 @@ def _empty_detection() -> PairDetection:
         rel_speed_kms=empty_f.copy(),
         altitude_km=empty_f.copy(),
         tca_offset_s=empty_f.copy(),
+        midpoint_km=np.empty((0, 3), dtype=np.float64),
     )
 
 
@@ -192,6 +194,7 @@ def detect_pairs(
         rel_speed_kms=rel_speed,
         altitude_km=altitude,
         tca_offset_s=t_star,
+        midpoint_km=midpoint,
     )
 
 
@@ -218,6 +221,9 @@ def detections_to_events(
                 miss_distance_km=float(detection.miss_km[k]),
                 relative_speed_km_s=float(detection.rel_speed_kms[k]),
                 altitude_km=float(detection.altitude_km[k]),
+                x_km=float(detection.midpoint_km[k, 0]),
+                y_km=float(detection.midpoint_km[k, 1]),
+                z_km=float(detection.midpoint_km[k, 2]),
             )
         )
     return events
