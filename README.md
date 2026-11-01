@@ -3,6 +3,8 @@
 A vectorized orbital propagation and 3D spatial-indexing engine that forecasts
 LEO satellite and debris conjunctions over a rolling 72-hour window.
 
+Orbital data: U.S. Space Command, via Space-Track.org.
+
 The design target is throughput. Two bottlenecks decide whether a full-catalog
 screen is feasible in Python, and both are pushed out of the interpreter:
 
@@ -20,7 +22,10 @@ actually decides whether the output is worth anything. See
 ## Results from a full run
 
 72-hour forecast, 1-minute steps, 5 km screening threshold, whole LEO catalog,
-across 22 CPU cores:
+across 22 CPU cores. These numbers come from an earlier run in September 2026 (72 hour window
+starting on 15 September). The Big Data Technologies report uses a later snapshot,
+taken on 31 October 2026 (28,716 objects, 194,871 encounters, 2 cores), so the
+counts differ.
 
 | | |
 |---|---|
@@ -88,7 +93,7 @@ python main.py                 # 10-minute smoke test, first 1,000 objects
 python main.py --full          # full 72-hour forecast over the LEO catalog
 python visualize.py --open     # static 3D encounter map  -> index.html
 python simulate.py --open      # animated orbital playback -> simulation.html
-python report.py --open        # results & CDM evidence    -> results.html
+python report.py --open        # engine evidence & results -> results.html
 python test_sentinel.py        # 28 correctness tests, no pytest required
 ```
 
@@ -150,8 +155,10 @@ Because a full screen yields ~184,000 encounters and a browser will not enjoy
 all of them at once, the default plots the closest 15,000 (`--limit 0` for
 everything).
 
-All storage is local. There is no database, cloud or otherwise, in the
-pipeline.
+The engine itself writes files only. The catalog, the boxscore and the alerts
+are then loaded into a SQLite database by the ingestion pipeline in
+[`pipeline/`](pipeline/README.md), which also exports the database for SQL
+Server (SSMS) and as CSV.
 
 The catalog is cached to `data/latest_catalog.json` and reused for
 `CATALOG_MAX_AGE_HOURS` (default 8), so repeated runs do not re-hit the API.
@@ -214,19 +221,21 @@ locally and open straight in a browser.
 
 ### `results.html` &mdash; the evidence report
 
-Written to answer "how do I know it actually ran SGP4, NumPy and CDM
-validation?" It has four sections:
+Written to answer "how do I know it actually ran SGP4 and NumPy?" It has three
+sections in its public form:
 
 1. **Engine evidence.** Runs a live vectorized propagation when the page is
    generated and prints the real `SatrecArray.sgp4()` output: array shapes,
    `float64` dtypes, a sample TEME state vector with its altitude and speed
    sanity-checked against circular LEO, and the measured throughput. It is a
    transcript, not a description.
-2. **CDM validation.** Every matched encounter side by side &mdash; official
-   18th SDS TCA and miss distance against ours, with residuals in seconds and
-   km, plus each CDM's collision probability.
-3. **Pipeline performance.** Per-stage profile from the most recent run.
-4. **Highest-risk conjunctions.** The ranked alert table.
+2. **Pipeline performance.** Per-stage profile from the most recent run.
+3. **Highest-risk conjunctions.** The ranked alert table.
+
+`python report.py --with-cdm` adds a fourth section that compares our
+encounters with the official CDMs. CDMs are not covered by Space-Track's
+blanket approval for sharing basic SSA data, so that version is for private
+use only and is not committed here.
 
 ### `simulation.html` &mdash; animated playback
 
@@ -408,7 +417,8 @@ at 1 minute to match the specification.
 ## Security
 
 `.env` is gitignored and contains live Space-Track credentials. `data/` and
-`logs/` are gitignored too. Never commit any of them. If a credential is ever
+`logs/` are gitignored too, and so are boxscore and CDM files and the pipeline
+database, because they are not basic SSA data and may not be redistributed. Never commit any of them. If a credential is ever
 exposed, rotate it at <https://www.space-track.org>.
 
 ---

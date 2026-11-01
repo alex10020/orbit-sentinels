@@ -33,3 +33,10 @@ Thumbs.db
 # (Space-Track terms do not allow redistribution)
 pipeline/db/
 pipeline/data/
+
+# Not basic SSA data under the Space-Track sharing policy: never publish
+*boxscore*.csv
+*boxscore*.json
+*cdm*.json
+*cdm*.csv
+results_with_cdm.html
