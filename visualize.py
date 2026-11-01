@@ -32,6 +32,23 @@ EARTH_SURFACE = [[0.0, "#0b2545"], [0.5, "#13395e"], [1.0, "#1d5b8f"]]
 GRATICULE = "rgba(120, 190, 255, 0.35)"
 
 
+
+# Space-Track's sharing policy allows basic SSA data (element sets, SATCAT, decay
+# data) and analysis based on it to be shared only with a citation of the source.
+SOURCE_CITATION = (
+    '<div style="position:fixed;left:12px;bottom:8px;color:#8fa6c4;'
+    'font:12px sans-serif;z-index:10">'
+    "Orbital data: U.S. Space Command, via Space-Track.org</div>"
+)
+
+
+def add_source_citation(path: Path) -> None:
+    """Put the data source line at the bottom of a written HTML page."""
+    page = path.read_text(encoding="utf-8")
+    if "Orbital data: U.S. Space Command" not in page:
+        page = page.replace("</body>", SOURCE_CITATION + "\n</body>", 1)
+        path.write_text(page, encoding="utf-8")
+
 def load_alerts(path: Path) -> pd.DataFrame:
     """Load the alert CSV, failing with a useful message rather than a stack."""
     if not path.exists():
@@ -304,6 +321,7 @@ def main(argv: list[str] | None = None) -> int:
         full_html=True,
         config={"displaylogo": False, "scrollZoom": True},
     )
+    add_source_citation(output)
 
     size_mb = output.stat().st_size / (1024 * 1024)
     print(f"Wrote {output} ({size_mb:.1f} MB, {len(frame):,} points).")

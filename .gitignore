@@ -28,3 +28,15 @@ dist/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Ingestion pipeline: database and raw Space-Track extracts stay local
+# (Space-Track terms do not allow redistribution)
+pipeline/db/
+pipeline/data/
+
+# Not basic SSA data under the Space-Track sharing policy: never publish
+*boxscore*.csv
+*boxscore*.json
+*cdm*.json
+*cdm*.csv
+results_with_cdm.html

@@ -41,6 +41,23 @@ OBJECT_COLOR = "#7fd4ff"
 CONJUNCTION_COLOR = "#ff3b30"
 
 
+
+# Space-Track's sharing policy allows basic SSA data (element sets, SATCAT, decay
+# data) and analysis based on it to be shared only with a citation of the source.
+SOURCE_CITATION = (
+    '<div style="position:fixed;left:12px;bottom:8px;color:#8fa6c4;'
+    'font:12px sans-serif;z-index:10">'
+    "Orbital data: U.S. Space Command, via Space-Track.org</div>"
+)
+
+
+def add_source_citation(path: Path) -> None:
+    """Put the data source line at the bottom of a written HTML page."""
+    page = path.read_text(encoding="utf-8")
+    if "Orbital data: U.S. Space Command" not in page:
+        page = page.replace("</body>", SOURCE_CITATION + "\n</body>", 1)
+        path.write_text(page, encoding="utf-8")
+
 def earth_traces(resolution: int = 48) -> list:
     """Shaded globe plus a graticule, matching visualize.py."""
     lon = np.linspace(0, 2 * np.pi, resolution)
@@ -426,6 +443,7 @@ def main(argv: list[str] | None = None) -> int:
         auto_play=False,
         config={"displaylogo": False, "scrollZoom": True},
     )
+    add_source_citation(output)
     size_mb = output.stat().st_size / (1024 * 1024)
     log.info("Wrote %s (%.1f MB, %d frames).", output, size_mb, len(sim["frames"]))
 

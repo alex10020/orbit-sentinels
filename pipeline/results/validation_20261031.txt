@@ -1,0 +1,97 @@
+
+== V1 load completeness (rows in DB vs rows read per run)  (3 ms)
+source | file_name | rows_read | rows_loaded | rows_rejected | rows_in_table
+gp | gp_catalog_20261031.json | 69790 | 69789 | 1 | 69789
+boxscore | boxscore_20261031.csv | 122 | 121 | 1 | 121
+alerts | conjunction_alerts_20261031T161840Z.csv | 194871 | 194870 | 1 | 194870
+
+== V2 uniqueness of business keys  (89 ms)
+check_name | violations
+gp: NORAD ids with >1 element set | 0
+alerts: duplicate unordered pairs per engine run | 0
+
+== V3 completeness of optional GP attributes (share of NULLs)  (21 ms)
+pct_no_country | pct_no_rcs | pct_no_launch_date | pct_no_periapsis
+16.2 | 18.4 | 16.2 | 0.0
+
+== V4 referential integrity: every alert object exists in the catalog  (84 ms)
+alert_rows | missing_object_1 | missing_object_2
+194870 | 0 | 0
+
+== V5 cross-source reconciliation: on-orbit objects, catalog vs boxscore  (25 ms)
+gp_on_orbit | boxscore_on_orbit | difference
+35575 | 35458 | 117
+
+== V6 reconciliation by country (largest absolute differences)  (41 ms)
+spadoc_cd | boxscore | gp | diff
+US | 18673 | 17709 | -964
+CIS | 6569 | 6516 | -53
+JPN | 335 | 297 | -38
+FR | 650 | 636 | -14
+PRC | 6203 | 6190 | -13
+ESA | 136 | 124 | -12
+
+== V7 engine reconciliation: SQL screening filter vs objects the engine propagated (28,716)  (21 ms)
+sql_screenable | engine_screened | difference
+28716 | 28716 | 0
+
+== V8 physical plausibility of alerts (engine assumes closing speed <= 16 km/s)  (78 ms)
+alerts | min_miss_km | max_miss_km | max_rel_kms | above_vmax | min_alt_km | max_alt_km
+194870 | 0.008781174166391521 | 4.999998192105361 | 16.078 | 1 | 245.89701762744608 | 2360.38460919969
+
+== Q1 downstream: ten closest approaches with owner countries  (0 ms)
+tca_utc | name_1 | c1 | name_2 | c2 | miss_m | rel_kms
+2026-11-01 12:26:07 | STARLINK-5839 | US | STARLINK-32733 | US | 9.0 | 7.64
+2026-11-03 06:21:08 | STARLINK-35524 | US | STARLINK-37808 | US | 26.0 | 2.14
+2026-11-03 13:53:39 | STARLINK-32285 | US | STARLINK-35855 | US | 28.0 | 7.4
+2026-11-02 01:05:54 | STARLINK-31400 | US | STARLINK-31404 | US | 29.0 | 7.82
+2026-11-02 10:33:04 | STARLINK-34149 | US | STARLINK-36174 | US | 29.0 | 9.33
+2026-11-02 22:32:36 | STARLINK-6178 | US | STARLINK-35680 | US | 30.0 | 9.82
+2026-11-02 21:16:25 | STARLINK-31382 | US | STARLINK-36494 | US | 33.0 | 9.31
+2026-11-02 12:26:21 | STARLINK-33693 | US | STARLINK-36524 | US | 33.0 | 7.88
+2026-11-03 01:15:46 | STARLINK-30099 | US | STARLINK-31442 | US | 34.0 | 6.21
+2026-11-03 00:19:10 | STARLINK-31933 | US | STARLINK-36511 | US | 34.0 | 6.15
+
+== Q2 downstream: sub-km encounters by owner pair  (80 ms)
+owner_pair | encounters_under_1km
+US x US | 15408
+PRC x US | 704
+CIS x US | 402
+CIS x PRC | 392
+TBD x US | 241
+PRC x PRC | 240
+None | 114
+CIS x CIS | 96
+
+== Q3 downstream: hourly encounter load using the SQL-generated time grid  (342 ms)
+hour_of_run | encounters | involving_debris
+0 | 2426 | 582
+1 | 2318 | 585
+2 | 2214 | 527
+3 | 2325 | 575
+4 | 2241 | 549
+5 | 2274 | 589
+
+== Q4 downstream: catalog by regime and type (on-orbit objects)  (39 ms)
+regime | object_type | objects
+None | ROCKET BODY | 2
+None | PAYLOAD | 2
+BEYOND | PAYLOAD | 57
+BEYOND | ROCKET BODY | 12
+BEYOND | DEBRIS | 5
+BEYOND | TBA | 1
+GEO band | PAYLOAD | 1286
+GEO band | ROCKET BODY | 236
+GEO band | DEBRIS | 96
+GEO band | UNKNOWN | 4
+GEO band | TBA | 1
+LEO | PAYLOAD | 17187
+LEO | DEBRIS | 11581
+LEO | UNKNOWN | 1688
+LEO | ROCKET BODY | 1613
+LEO | TBA | 170
+MEO/HEO | DEBRIS | 651
+MEO/HEO | PAYLOAD | 546
+MEO/HEO | ROCKET BODY | 402
+MEO/HEO | UNKNOWN | 26
+MEO/HEO | TBA | 9

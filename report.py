@@ -288,17 +288,18 @@ def card(key: str, value: str, tone: str = "") -> str:
 # --------------------------------------------------------------------------- #
 def build_html(
     evidence: dict,
-    summary: dict,
-    matches: pd.DataFrame,
-    misses: pd.DataFrame,
+    summary: dict | None,
+    matches: pd.DataFrame | None,
+    misses: pd.DataFrame | None,
     alerts: pd.DataFrame,
     run: dict | None,
     top: int,
 ) -> str:
     generated = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
-    recall = summary["recall"]
-    residual = summary["miss_distance_residual_km"]
-    tca_res = summary["tca_residual_minutes"]
+    cdm_section = ""
+    if summary is not None:
+        cdm_section = _cdm_section(summary, matches, misses)
+    n = 3 if cdm_section else 2
 
     engine_cards = (
         card("Objects propagated", f"{evidence['objects']:,}")
@@ -306,6 +307,16 @@ def build_html(
         + card("SGP4 rate", f"{evidence['rate']:,.0f}/s", "good")
         + card("Array dtype", evidence["dtype"])
     )
+    return _page(evidence, engine_cards, cdm_section, alerts, run, top, generated, n)
+
+
+def _cdm_section(summary: dict, matches: pd.DataFrame, misses: pd.DataFrame) -> str:
+    """Comparison with official CDMs. CDMs are not basic SSA data under the
+    Space-Track sharing policy, so this section is only built with --with-cdm
+    and the resulting page must not be published."""
+    recall = summary["recall"]
+    residual = summary["miss_distance_residual_km"]
+    tca_res = summary["tca_residual_minutes"]
 
     val_cards = (
         card("CDMs in scope", str(summary["considered_cdms"]))
@@ -324,6 +335,34 @@ def build_html(
         )
     )
 
+    miss_note = ""
+    if not misses.empty:
+        items = "".join(
+            f"<li>{html.escape(str(m['names'][0]))} &times; "
+            f"{html.escape(str(m['names'][1]))} "
+            f"&mdash; CDM {m['cdm_min_range_km']:.3f} km at {m['tca_utc']}</li>"
+            for _, m in misses.iterrows()
+        )
+        miss_note = f"<h3>Missed CDM encounters</h3><ul>{items}</ul>"
+
+    return f"""
+<h2>2 &nbsp;Validation against official CDMs</h2>
+<p class="note">Ground truth is the 18th Space Defense Squadron
+<code>cdm_public</code> feed. Our predictions come from public TLEs; theirs come
+from high-precision ephemerides and operator data, so exact agreement is not
+expected &mdash; the residual columns show how close we get.</p>
+<div class="cards">{val_cards}</div>
+{matches_table(matches)}
+{miss_note}
+<p class="note"><strong>Precision is deliberately not headlined.</strong>
+<code>cdm_public</code> exposes only the ~100 most recent public messages, so
+the denominator is truncated ground truth rather than a count of false alarms.
+Recall &mdash; restricted to CDMs whose objects were both propagated and whose
+TCA falls inside the window &mdash; is the defensible metric.</p>
+"""
+
+
+def _page(evidence, engine_cards, cdm_section, alerts, run, top, generated, n) -> str:
     run_cards = ""
     if run:
         run_cards = (
@@ -334,16 +373,6 @@ def build_html(
             + card("Workers", str(run.get("workers", 1)))
             + card("Peak RSS", f"{run.get('resident_memory_mb', 0):,.0f} MB")
         )
-
-    miss_note = ""
-    if not misses.empty:
-        items = "".join(
-            f"<li>{html.escape(str(m['names'][0]))} &times; "
-            f"{html.escape(str(m['names'][1]))} "
-            f"&mdash; CDM {m['cdm_min_range_km']:.3f} km at {m['tca_utc']}</li>"
-            for _, m in misses.iterrows()
-        )
-        miss_note = f"<h3>Missed CDM encounters</h3><ul>{items}</ul>"
 
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
@@ -368,33 +397,19 @@ what the code intends to do.</p>
 <code>[N, T]</code> error matrix and the <code>[N, T, 3]</code> position and
 velocity tensors. No Python loop touches an individual object, which is what
 makes full-catalog propagation tractable.</p>
-
-<h2>2 &nbsp;Validation against official CDMs</h2>
-<p class="note">Ground truth is the 18th Space Defense Squadron
-<code>cdm_public</code> feed. Our predictions come from public TLEs; theirs come
-from high-precision ephemerides and operator data, so exact agreement is not
-expected &mdash; the residual columns show how close we get.</p>
-<div class="cards">{val_cards}</div>
-{matches_table(matches)}
-{miss_note}
-<p class="note"><strong>Precision is deliberately not headlined.</strong>
-<code>cdm_public</code> exposes only the ~100 most recent public messages, so
-the denominator is truncated ground truth rather than a count of false alarms.
-Recall &mdash; restricted to CDMs whose objects were both propagated and whose
-TCA falls inside the window &mdash; is the defensible metric.</p>
-
-<h2>3 &nbsp;Pipeline performance</h2>
+{cdm_section}
+<h2>{n} &nbsp;Pipeline performance</h2>
 <div class="cards">{run_cards}</div>
 {stages_table(run)}
 
-<h2>4 &nbsp;Highest-risk conjunctions</h2>
+<h2>{n + 1} &nbsp;Highest-risk conjunctions</h2>
 <p class="note">Closest {top} of {len(alerts):,} flagged encounters, after
 deduplication and sub-second TCA refinement.</p>
 {top_conjunctions_table(alerts, top)}
 
 <footer>
 Orbital Sentinel &middot; vectorized SGP4 propagation, cKDTree spatial
-screening, CDM validation. Source data: Space-Track.org.
+screening. Orbital data: U.S. Space Command, via Space-Track.org.
 </footer>
 
 </div></body></html>"""
@@ -411,6 +426,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--evidence-objects", type=int, default=2000,
         help="Objects used for the live SGP4 demonstration (default: 2000).",
+    )
+    parser.add_argument(
+        "--with-cdm", action="store_true",
+        help="Add the comparison with official CDMs. CDMs are not covered by the "
+             "Space-Track blanket sharing approval, so do not publish that page.",
     )
     parser.add_argument("--open", action="store_true")
     return parser.parse_args(argv)
@@ -432,8 +452,10 @@ def main(argv: list[str] | None = None) -> int:
     log.info("Running live SGP4 evidence pass.")
     evidence = engine_evidence(n_objects=args.evidence_objects)
 
-    log.info("Recomputing CDM validation.")
-    summary, matches, misses = cdm_validation(alerts)
+    summary = matches = misses = None
+    if args.with_cdm:
+        log.info("Recomputing CDM validation.")
+        summary, matches, misses = cdm_validation(alerts)
 
     run = latest_run_summary()
     page = build_html(evidence, summary, matches, misses, alerts, run, args.top)
@@ -441,13 +463,9 @@ def main(argv: list[str] | None = None) -> int:
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(page, encoding="utf-8")
-    log.info(
-        "Wrote %s (%.0f KB) | recall %.3f on %d CDMs",
-        output,
-        output.stat().st_size / 1024,
-        summary["recall"],
-        summary["considered_cdms"],
-    )
+    log.info("Wrote %s (%.0f KB)", output, output.stat().st_size / 1024)
+    if summary is not None:
+        log.info("CDM recall %.3f on %d CDMs", summary["recall"], summary["considered_cdms"])
 
     if args.open:
         import webbrowser
