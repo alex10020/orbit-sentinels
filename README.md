@@ -123,7 +123,8 @@ orbital-sentinel/
 ├── visualize.py       Plotly 3D globe of encounters -> index.html
 ├── simulate.py        Animated orbital playback -> simulation.html
 ├── report.py          Evidence + validation dashboard -> results.html
-└── test_sentinel.py   Correctness tests
+├── test_sentinel.py   Correctness tests
+└── pipeline/          Ingestion into SQLite (see pipeline/README.md)
 ```
 
 Data flows `Ingestion -> SatrecArray -> cKDTree -> Conjunction Log -> Metrics`.

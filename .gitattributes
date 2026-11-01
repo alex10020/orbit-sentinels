@@ -1,0 +1,7 @@
+# The HTML pages are generated outputs of visualize.py, simulate.py and
+# report.py (Plotly figures with inlined JavaScript, ~8 MB in total).
+# Mark them as generated so GitHub's language statistics count the Python
+# source, and collapse them in diffs.
+index.html      linguist-generated=true
+simulation.html linguist-generated=true
+results.html    linguist-generated=true
