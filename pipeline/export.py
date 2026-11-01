@@ -2,13 +2,14 @@
 
     python pipeline/export.py --db pipeline/db/orbital_sentinel.db --out pipeline/db/export
 
-Writes three things into --out:
+Writes two things into --out (three with --sqlite-dump):
 
   csv/<table>.csv                 one CSV per table (UTF-8, header row, empty field = NULL)
-  orbital_sentinel_sqlite.sql     full SQLite dump (schema + data), opens in DBeaver or sqlite3
   orbital_sentinel_mssql.sql      SQL Server script for SSMS: creates the tables, loads the
                                   CSVs with BULK INSERT, rebuilds the SQL generated tables
                                   and the views, then runs a short validation
+  orbital_sentinel_sqlite.sql     only with --sqlite-dump: the SQLite database as a plain SQL
+                                  dump (the .db file itself already opens in any SQLite tool)
 
 Only the Python standard library is needed.
 """
@@ -305,11 +306,14 @@ def main(argv=None) -> int:
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--engine-count", type=int, default=28716,
                     help="objects screened by the engine run, used by the V7 check")
+    ap.add_argument("--sqlite-dump", action="store_true",
+                    help="also write a plain SQL dump of the SQLite database")
     a = ap.parse_args(argv)
     con = sqlite3.connect(a.db)
     a.out.mkdir(parents=True, exist_ok=True)
     counts = export_csv(con, a.out / "csv")
-    export_sqlite_dump(con, a.out / "orbital_sentinel_sqlite.sql")
+    if a.sqlite_dump:
+        export_sqlite_dump(con, a.out / "orbital_sentinel_sqlite.sql")
     window_start = con.execute("SELECT MIN(t_utc) FROM forecast_time_grid").fetchone()[0]
     export_mssql(window_start, a.engine_count, a.out / "orbital_sentinel_mssql.sql")
     for t, n in counts.items():

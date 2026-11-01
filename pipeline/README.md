@@ -9,7 +9,7 @@ Loads the project's sources into a SQLite database that follows the data diction
 | `sql/01_schema.sql` | Tables, constraints, indexes. |
 | `sql/02_generated.sql` | Datasets generated in SQL (forecast time grid, regimes, object types) and curated views. |
 | `sql/03_validation.sql` | Validation checks and example downstream queries. |
-| `export.py` | Writes the database as CSV files, a SQLite dump and a SQL Server script for SSMS. |
+| `export.py` | Writes the database as CSV files and as a SQL Server script for SSMS (and, with `--sqlite-dump`, as a SQLite SQL dump). |
 | `run_all.sh` | Rebuilds the database from `data/raw/`, runs the checks and writes the exports. |
 | `results/` | Output of the last validation run. |
 
@@ -40,8 +40,8 @@ bash pipeline/run_all.sh
 ### Opening the database
 
 - **SQLite** (`db/orbital_sentinel.db`): open directly in DBeaver, DB Browser for
-  SQLite or the `sqlite3` shell. `db/export/orbital_sentinel_sqlite.sql` is the
-  same database as a plain SQL dump.
+  SQLite or the `sqlite3` shell. `export.py --sqlite-dump` also writes it as a
+  plain SQL dump.
 - **SQL Server / SSMS**: copy `db/export/csv/` to a folder the SQL Server service
   can read, set `@csv_dir` at the top of `db/export/orbital_sentinel_mssql.sql`
   and run the script (SQL Server 2017 or newer). It creates the tables with the
