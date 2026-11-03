@@ -22,10 +22,9 @@ actually decides whether the output is worth anything. See
 ## Results from a full run
 
 72-hour forecast, 1-minute steps, 5 km screening threshold, whole LEO catalog,
-across 22 CPU cores. These numbers come from an earlier run in September 2026 (72 hour window
-starting on 15 September). The Big Data Technologies report uses a later snapshot,
-taken on 31 October 2026 (28,716 objects, 194,871 encounters, 2 cores), so the
-counts differ.
+across 22 CPU cores. These numbers come from a run in September 2026, with the
+72-hour window starting on 15 September. The counts change with every catalog
+snapshot, so later runs give different numbers.
 
 | | |
 |---|---|
@@ -172,9 +171,8 @@ The fix is the standard SSA screening-volume approach, in two stages:
    encounter reachable within one step: `R = threshold + v_max · dt/2`, which
    is **485 km** for a 1-minute step and a 16 km/s maximum closing speed. Any
    pair that conjuncts during the step must appear in this result, as long as
-   it closes slower than that assumed maximum. The 31 October run found two
-   encounters above 16 km/s, so the assumed maximum will be raised (see the
-   Big Data Technologies report, Section 7.2).
+   it closes slower than that assumed maximum. A later run found two encounters
+   above 16 km/s, so the assumed maximum will be raised.
 2. **Fine pass.** For each candidate, solve for the closest approach assuming
    linear relative motion across the step. For relative position `Δr` and
    relative velocity `Δv`, the minimising offset is `t* = −(Δr·Δv)/|Δv|²`,
