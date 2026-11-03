@@ -1,4 +1,4 @@
-# Ingestion pipeline (Big Data Technologies, Group Assessment 1)
+# Ingestion pipeline
 
 Loads the project's sources into a SQLite database that follows the data dictionary.
 
@@ -16,9 +16,9 @@ Loads the project's sources into a SQLite database that follows the data diction
 Sources (put them in `pipeline/data/raw/`, which is git-ignored):
 
 - GP catalog, JSON: Space-Track `class/gp`
-- Boxscore, CSV: Space-Track `class/boxscore` (course use only, not basic SSA data)
+- Boxscore, CSV: Space-Track `class/boxscore` (not basic SSA data, not redistributed)
 - Conjunction alerts, CSV: `python main.py --full` in the repository root
-- Public CDMs, JSON: Space-Track `class/cdm_public` (loader written, data pending, course use only)
+- Public CDMs, JSON: Space-Track `class/cdm_public` (loader written, data pending, not redistributed)
 
 ```bash
 python pipeline/ingest.py --db pipeline/db/orbital_sentinel.db \
